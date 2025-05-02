@@ -1,0 +1,575 @@
+{% extends 'base.html' %}
+
+{% block title %}Dashboard - Job #{{ job.id }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .crawl-status-card {
+        transition: all 0.3s ease;
+    }
+    .url-list {
+        max-height: 500px;
+        overflow-y: auto;
+    }
+    .badge-timeout {
+        background-color: #fc8803;
+        color: white;
+    }
+    .badge-retry {
+        background-color: #6c757d;
+        color: white;
+    }
+    .badge-failed {
+        background-color: #dc3545;
+        color: white;
+    }
+    .browser-preview {
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        background-color: #f8f9fa;
+        padding: 10px;
+        margin-bottom: 20px;
+    }
+    .browser-preview img {
+        max-width: 100%;
+        height: auto;
+        border: 1px solid #ccc;
+    }
+    .browser-preview-url {
+        background-color: #f1f3f5;
+        border: 1px solid #ced4da;
+        border-radius: 4px;
+        padding: 8px 12px;
+        margin-bottom: 10px;
+        font-family: monospace;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .progress {
+        height: 20px;
+        margin-bottom: 20px;
+    }
+    .card-dashboard {
+        margin-bottom: 20px;
+    }
+    .stats-number {
+        font-size: 24px;
+        font-weight: bold;
+    }
+    .stats-label {
+        font-size: 14px;
+        color: #6c757d;
+    }
+    .stats-card {
+        text-align: center;
+        padding: 15px;
+    }
+    .status-badge {
+        font-size: 1rem;
+    }
+    .parallel-workers {
+        background-color: #f8f9fa;
+        border-radius: 4px;
+        padding: 10px;
+        margin-bottom: 15px;
+    }
+    .proxy-badge {
+        display: inline-block;
+        padding: 0.25rem 0.5rem;
+        margin: 0.25rem;
+        border-radius: 0.25rem;
+        background-color: #e9ecef;
+        font-size: 0.875rem;
+    }
+    #exportModal .progress {
+        height: 25px;
+    }
+    .export-buttons {
+        margin-bottom: 20px;
+    }
+    .export-btn {
+        margin-right: 10px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h2>Crawl Job #{{ job.id }}</h2>
+        <div class="d-flex justify-content-between align-items-center">
+            <p class="text-muted">Created: {{ job.created_at|date:"M d, Y H:i:s" }}</p>
+            <div class="btn-group">
+                {% if job.status == 'pending' %}
+                    <a href="?start=1" class="btn btn-success">Start Crawling</a>
+                {% endif %}
+                
+                {% if job.status == 'running' or job.status == 'cooloff' %}
+                    <form method="post" action="{% url 'kill_job' job.id %}" class="d-inline">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-danger" 
+                                onclick="return confirm('Are you sure you want to kill this job?')">
+                            Kill Job
+                        </button>
+                    </form>
+                {% endif %}
+                
+                {% if job.status != 'running' and job.status != 'cooloff' %}
+                    <form method="post" action="{% url 'reset_job' job.id %}" class="d-inline ms-2">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-warning" 
+                                onclick="return confirm('Are you sure you want to reset this job? All crawled data will be lost.')">
+                            Reset Job
+                        </button>
+                    </form>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if job.debug_mode and job.status == 'running' %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header bg-info text-white">
+                <h5 class="card-title mb-0">Browser Preview</h5>
+            </div>
+            <div class="card-body">
+                <div class="browser-preview">
+                    <div class="browser-preview-url" id="browser-url">Waiting for URL...</div>
+                    <div id="browser-status" class="mb-2">
+                        <span class="badge bg-secondary">Waiting</span>
+                    </div>
+                    <div id="browser-screenshot">
+                        <div class="text-center py-5">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-3">Waiting for browser activity...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<div class="row">
+    <div class="col-md-4 mb-4">
+        <div class="card crawl-status-card h-100">
+            <div class="card-header bg-primary text-white">
+                <h5 class="card-title mb-0">Crawl Status</h5>
+            </div>
+            <div class="card-body" id="stats-card">
+                <div class="d-flex justify-content-between mb-2">
+                    <span>Status:</span>
+                    <span id="job-status" class="badge bg-primary">{{ job.get_status_display }}</span>
+                </div>
+                <div class="d-flex justify-content-between mb-2">
+                    <span>Progress:</span>
+                    <span id="job-progress">{{ job.urls_processed }} / {{ job.urls_total }}</span>
+                </div>
+                <div class="mb-3">
+                    <div class="progress">
+                        <div id="progress-bar" class="progress-bar" role="progressbar" 
+                             style="width: {{ job.urls_processed|floatformat:0 }}%;" 
+                             aria-valuenow="{{ job.urls_processed }}" aria-valuemin="0" aria-valuemax="{{ job.urls_total }}">
+                            {{ job.urls_processed|floatformat:0 }}%
+                        </div>
+                    </div>
+                </div>
+                <div id="additional-stats" class="mt-4">
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>Current Rate:</span>
+                        <span id="current-rate">{{ job.current_rate|floatformat:2 }} req/sec</span>
+                    </div>
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>Rate Limit Hits:</span>
+                        <span id="rate-limit-hits">{{ job.rate_limit_hits }}</span>
+                    </div>
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>Current Proxy:</span>
+                        <span id="current-proxy">Loading...</span>
+                    </div>
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>Blocked Proxies:</span>
+                        <span id="blocked-proxies">Loading...</span>
+                    </div>
+                    
+                    <div id="active-proxies-container" class="d-none mt-3 mb-3">
+                        <h6 class="border-bottom pb-2">Active Proxies</h6>
+                        <div id="active-proxies-list">
+                            <!-- Active proxies will be displayed here -->
+                        </div>
+                    </div>
+                    
+                    <div id="retry-stats" class="mt-3">
+                        <h6 class="border-bottom pb-2">Retry Stats</h6>
+                        <div class="d-flex justify-content-between my-2">
+                            <span>Timeout URLs:</span>
+                            <span id="timeout-urls">0</span>
+                        </div>
+                        <div class="d-flex justify-content-between my-2">
+                            <span>Retry Pending:</span>
+                            <span id="retry-pending">0</span>
+                        </div>
+                        <div class="d-flex justify-content-between my-2">
+                            <span>Failed After Retry:</span>
+                            <span id="failed-urls">0</span>
+                        </div>
+                    </div>
+                    <div id="cooloff-container" class="d-none">
+                        <div class="alert alert-warning">
+                            <strong>In Cooloff Period</strong>
+                            <div>Remaining: <span id="cooloff-time">--:--</span></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-8 mb-4">
+        <div class="card h-100">
+            <div class="card-header bg-secondary text-white">
+                <h5 class="card-title mb-0">Crawled URLs</h5>
+            </div>
+            <div class="card-body p-0">
+                <div class="url-list">
+                    <div class="list-group list-group-flush" id="url-list">
+                        {% for url in crawled_urls %}
+                            <a href="{% url 'content_view' url.id %}" class="list-group-item list-group-item-action" target="_blank">
+                                <div class="d-flex w-100 justify-content-between">
+                                    <h6 class="mb-1 text-truncate" style="max-width: 70%;">{{ url.url }}</h6>
+                                    <small>{{ url.crawled_at|date:"H:i:s"|default:"Pending" }}</small>
+                                </div>
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <span class="badge {% if url.status_code == 200 %}bg-success{% elif url.status_code %}bg-warning{% else %}bg-secondary{% endif %}">
+                                            {{ url.status_code|default:"Pending" }}
+                                        </span>
+                                        {% if url.retry_status == 'timeout' %}
+                                            <span class="badge badge-timeout">Timeout</span>
+                                        {% elif url.retry_status == 'retry_pending' %}
+                                            <span class="badge badge-retry">Retry Pending</span>
+                                        {% elif url.retry_status == 'failed' %}
+                                            <span class="badge badge-failed">Failed</span>
+                                        {% endif %}
+                                    </div>
+                                    <small class="text-muted">{{ url.proxy_used|default:"No proxy" }}</small>
+                                </div>
+                            </a>
+                        {% empty %}
+                            <div class="list-group-item">No URLs crawled yet</div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Export Buttons -->
+<div class="export-buttons">
+    <a href="{% url 'export_job_structured' job.id %}" class="btn btn-success export-btn" id="exportStructuredBtn">
+        <i class="fas fa-file-export"></i> Export All Structured Data (JSON)
+    </a>
+    <a href="{% url 'export_job_raw' job.id %}" class="btn btn-info export-btn" id="exportRawBtn">
+        <i class="fas fa-file-export"></i> Export All Raw HTML (JSON)
+    </a>
+</div>
+
+<!-- Export Progress Modal -->
+<div class="modal fade" id="exportModal" tabindex="-1" aria-labelledby="exportModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="exportModalLabel">Exporting Data</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Preparing export file. This may take a moment for large datasets...</p>
+                <div class="progress">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated" id="exportProgressBar" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" style="width: 0%"></div>
+                </div>
+                <p class="mt-2 mb-0">Processed: <span id="exportProgressText">0/0 URLs (0%)</span></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="col-md-6">
+    <p><strong>URL:</strong> {{ job.url }}</p>
+    <p><strong>Created:</strong> {{ job.created_at }}</p>
+    <p><strong>Status:</strong> 
+        <span class="badge status-badge 
+            {% if job.status == 'completed' %}bg-success
+            {% elif job.status == 'running' %}bg-primary
+            {% elif job.status == 'failed' %}bg-danger
+            {% else %}bg-secondary{% endif %}">
+            {{ job.status|title }}
+        </span>
+    </p>
+</div>
+<div class="col-md-6">
+    <p><strong>Include Subdomains:</strong> {{ job.include_subdomains|yesno:"Yes,No" }}</p>
+    <p><strong>Take Screenshots:</strong> {{ job.take_screenshots|yesno:"Yes,No" }}</p>
+    <p><strong>Parallel Workers:</strong> {{ job.parallel_workers }}</p>
+    {% if job.proxy_countries %}
+    <p><strong>Proxy Countries:</strong> {{ job.proxy_countries }}</p>
+    {% endif %}
+    <p><strong>Reshuffle Proxies:</strong> {% if job.reshuffle_proxies %}<span class="text-success">Enabled</span>{% else %}Disabled{% endif %}</p>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let jobId = {{ job.id }};
+    let statusPolling = null;
+    let previewPolling = null;
+    let isDebugMode = {{ job.debug_mode|yesno:"true,false" }};
+    let exportModal = null;
+    let exportTimer = null;
+    let exportType = null;
+    
+    function updateStats() {
+        fetch("/api/job-stats/" + jobId + "/")
+            .then(function(response) { return response.json(); })
+            .then(function(data) {
+                // Update status
+                var statusElement = document.getElementById("job-status");
+                statusElement.textContent = data.status.charAt(0).toUpperCase() + data.status.slice(1);
+                
+                // Update status badge color
+                statusElement.className = "badge";
+                switch(data.status) {
+                    case "running":
+                        statusElement.classList.add("bg-success");
+                        break;
+                    case "pending":
+                        statusElement.classList.add("bg-secondary");
+                        break;
+                    case "completed":
+                        statusElement.classList.add("bg-primary");
+                        break;
+                    case "failed":
+                        statusElement.classList.add("bg-danger");
+                        break;
+                    case "cooloff":
+                        statusElement.classList.add("bg-warning");
+                        break;
+                    case "killed":
+                        statusElement.classList.add("bg-danger");
+                        break;
+                }
+                
+                // Update progress
+                document.getElementById("job-progress").textContent = data.urls_processed + " / " + data.urls_total;
+                
+                // Update progress bar
+                var progressBar = document.getElementById("progress-bar");
+                progressBar.style.width = data.progress_percent + "%";
+                progressBar.setAttribute("aria-valuenow", data.urls_processed);
+                progressBar.textContent = data.progress_percent + "%";
+                
+                // Update stats
+                document.getElementById("current-rate").textContent = data.current_rate.toFixed(2) + " req/sec";
+                document.getElementById("rate-limit-hits").textContent = data.rate_limit_hits;
+                
+                // Update proxy info
+                if (data.current_proxy) {
+                    document.getElementById("current-proxy").textContent = 
+                        data.current_proxy.ip + ":" + data.current_proxy.port + " (" + (data.current_proxy.country || "Unknown") + ")";
+                } else {
+                    document.getElementById("current-proxy").textContent = "None";
+                }
+                
+                document.getElementById("blocked-proxies").textContent = data.blocked_proxies_count;
+                
+                // Update active proxies if in parallel mode
+                var activeProxiesContainer = document.getElementById("active-proxies-container");
+                if (data.parallel_workers > 1 && data.active_proxies && data.active_proxies.length > 0) {
+                    activeProxiesContainer.classList.remove("d-none");
+                    var proxyListHtml = "";
+                    data.active_proxies.forEach(function(proxy, index) {
+                        proxyListHtml += '<div class="d-flex justify-content-between my-1">' +
+                            '<span>Worker ' + (index + 1) + ':</span>' +
+                            '<span>' + proxy.ip + ':' + proxy.port + ' (' + (proxy.country || "Unknown") + ')</span>' +
+                            '</div>';
+                    });
+                    document.getElementById("active-proxies-list").innerHTML = proxyListHtml;
+                } else {
+                    activeProxiesContainer.classList.add("d-none");
+                }
+                
+                // Update retry stats if available
+                if (data.timeout_urls !== undefined) {
+                    document.getElementById("timeout-urls").textContent = data.timeout_urls;
+                    document.getElementById("retry-pending").textContent = data.retry_pending_urls;
+                    document.getElementById("failed-urls").textContent = data.failed_urls;
+                }
+                
+                // Handle cooloff period
+                var cooloffContainer = document.getElementById("cooloff-container");
+                if (data.status === "cooloff" && data.cooloff_remaining) {
+                    cooloffContainer.classList.remove("d-none");
+                    
+                    // Format remaining time
+                    var minutes = Math.floor(data.cooloff_remaining / 60);
+                    var seconds = Math.floor(data.cooloff_remaining % 60);
+                    document.getElementById("cooloff-time").textContent = 
+                        minutes.toString().padStart(2, "0") + ":" + seconds.toString().padStart(2, "0");
+                } else {
+                    cooloffContainer.classList.add("d-none");
+                }
+                
+                // If job is completed, failed, or killed, stop polling and refresh the page
+                if (data.status === "completed" || data.status === "failed" || data.status === "killed") {
+                    clearInterval(statusPolling);
+                    clearInterval(previewPolling);
+                    
+                    // Refresh page after 2 seconds to update the action buttons
+                    if (data.status === "killed") {
+                        setTimeout(function() {
+                            window.location.reload();
+                        }, 2000);
+                    }
+                }
+                
+                // If any counts have changed, refresh the URL list section
+                if (data.status === "running" || data.status === "completed") {
+                    // Only refresh the page every ~10 seconds to avoid too many reloads
+                    if (Math.random() < 0.2) { // ~20% chance each update (every ~10 seconds)
+                        window.location.reload();
+                    }
+                }
+            })
+            .catch(function(error) {
+                console.error("Error fetching job stats:", error);
+            });
+    }
+    
+    function updateBrowserPreview() {
+        if (!isDebugMode) return;
+        
+        fetch("/api/browser-preview/" + jobId + "/")
+            .then(function(response) { return response.json(); })
+            .then(function(data) {
+                if (data.url) {
+                    document.getElementById("browser-url").textContent = data.url;
+                    
+                    var statusBadge = "";
+                    switch(data.status) {
+                        case "pending":
+                            statusBadge = '<span class="badge bg-secondary">Pending</span>';
+                            break;
+                        case "timeout":
+                            statusBadge = '<span class="badge badge-timeout">Timeout</span>';
+                            break;
+                        case "retry_pending":
+                            statusBadge = '<span class="badge badge-retry">Retry Pending</span>';
+                            break;
+                        case "failed":
+                            statusBadge = '<span class="badge badge-failed">Failed</span>';
+                            break;
+                        default:
+                            statusBadge = '<span class="badge bg-secondary">Processing</span>';
+                    }
+                    document.getElementById("browser-status").innerHTML = statusBadge;
+                    
+                    if (data.screenshot_path) {
+                        document.getElementById("browser-screenshot").innerHTML = 
+                            '<img src="/static/' + data.screenshot_path + '" class="img-fluid" alt="Browser preview">';
+                    }
+                } else {
+                    document.getElementById("browser-url").textContent = "Waiting for URL...";
+                    document.getElementById("browser-status").innerHTML = '<span class="badge bg-secondary">Waiting</span>';
+                }
+            })
+            .catch(function(error) {
+                console.error("Error fetching browser preview:", error);
+            });
+    }
+    
+    function checkExportProgress() {
+        fetch("/api/export-progress/" + jobId + "/?type=" + exportType)
+            .then(response => response.json())
+            .then(data => {
+                const progressBar = document.getElementById('exportProgressBar');
+                const progressText = document.getElementById('exportProgressText');
+                
+                if (data.total > 0) {
+                    const percentage = Math.round((data.processed / data.total) * 100);
+                    progressBar.style.width = `${percentage}%`;
+                    progressBar.setAttribute('aria-valuenow', percentage);
+                    progressText.innerText = `${data.processed}/${data.total} URLs (${percentage}%)`;
+                    
+                    // If not complete, check again
+                    if (data.processed < data.total && exportTimer) {
+                        setTimeout(checkExportProgress, 500);
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('Error checking export progress:', error);
+                if (exportTimer) {
+                    setTimeout(checkExportProgress, 1000);
+                }
+            });
+    }
+    
+    function handleExport(event, type) {
+        // Show the export modal
+        exportModal.show();
+        exportType = type;
+        
+        // Start checking the progress
+        exportTimer = setTimeout(checkExportProgress, 500);
+        
+        // Continue with the download
+        return true;
+    }
+    
+    document.addEventListener("DOMContentLoaded", function() {
+        // Start polling for updates
+        statusPolling = setInterval(updateStats, 2000);
+        
+        // If in debug mode, also poll for browser preview
+        if (isDebugMode) {
+            previewPolling = setInterval(updateBrowserPreview, 1000);
+        }
+        
+        // Initial updates
+        updateStats();
+        if (isDebugMode) {
+            updateBrowserPreview();
+        }
+        
+        // Initialize Bootstrap modal
+        exportModal = new bootstrap.Modal(document.getElementById('exportModal'));
+        
+        // Set up export button event handlers
+        document.getElementById('exportStructuredBtn').addEventListener('click', function(e) {
+            return handleExport(e, 'structured');
+        });
+        
+        document.getElementById('exportRawBtn').addEventListener('click', function(e) {
+            return handleExport(e, 'raw');
+        });
+        
+        // When modal is hidden, clear the timer
+        document.getElementById('exportModal').addEventListener('hidden.bs.modal', function() {
+            if (exportTimer) {
+                clearTimeout(exportTimer);
+                exportTimer = null;
+            }
+        });
+    });
+</script>
+{% endblock %} 

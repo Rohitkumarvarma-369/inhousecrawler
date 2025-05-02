@@ -1,0 +1,67 @@
+/* Custom styles for InHouse Crawler */
+
+body {
+    background-color: #f8f9fa;
+}
+
+.card {
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+    margin-bottom: 1.5rem;
+}
+
+.card-header {
+    font-weight: 500;
+}
+
+.progress {
+    height: 1.5rem;
+    font-size: 0.8rem;
+    font-weight: 500;
+}
+
+.url-list {
+    border-radius: 0.375rem;
+}
+
+.url-list .list-group-item {
+    border-left: none;
+    border-right: none;
+}
+
+.url-list .list-group-item:first-child {
+    border-top: none;
+}
+
+.crawl-status-card {
+    background-color: #fff;
+}
+
+.cooloff-container {
+    margin-top: 1rem;
+}
+
+/* Dashboard stat items */
+#stats-card .d-flex {
+    padding: 0.5rem 0;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+#stats-card .d-flex:last-child {
+    border-bottom: none;
+}
+
+/* Content view */
+.html-content iframe {
+    border-radius: 0.25rem;
+}
+
+/* Animation for "in progress" status */
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.5; }
+    100% { opacity: 1; }
+}
+
+.badge.bg-warning {
+    animation: pulse 2s infinite;
+} 

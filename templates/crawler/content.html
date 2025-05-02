@@ -1,0 +1,250 @@
+{% extends 'base.html' %}
+
+{% block title %}URL Content - {{ crawled_url.url }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .copy-btn {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        z-index: 100;
+    }
+    .content-section {
+        position: relative;
+        margin-bottom: 20px;
+        padding: 15px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+    }
+    .data-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 15px;
+    }
+    .data-table th, .data-table td {
+        border: 1px solid #ddd;
+        padding: 8px;
+        text-align: left;
+    }
+    .data-table th {
+        background-color: #f2f2f2;
+    }
+    pre {
+        white-space: pre-wrap;
+        word-wrap: break-word;
+    }
+    .export-btn {
+        margin-right: 10px;
+    }
+    .btn-export {
+        margin-bottom: 15px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h1>URL Content</h1>
+    <p class="mb-4"><strong>URL:</strong> {{ crawled_url.url }}</p>
+    
+    <div class="mb-4">
+        <a href="{% url 'dashboard' crawled_url.job.id %}" class="btn btn-secondary">Back to Dashboard</a>
+        <div class="float-end">
+            <a href="{% url 'export_url_structured' crawled_url.id %}" class="btn btn-success export-btn">
+                <i class="fas fa-file-export"></i> Export Structured Data (JSON)
+            </a>
+            <a href="{% url 'export_url_raw' crawled_url.id %}" class="btn btn-info export-btn">
+                <i class="fas fa-file-export"></i> Export Raw HTML (JSON)
+            </a>
+        </div>
+    </div>
+
+    <ul class="nav nav-tabs" id="contentTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="extracted-tab" data-bs-toggle="tab" data-bs-target="#extracted" type="button" role="tab" aria-controls="extracted" aria-selected="true">Extracted Content</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="raw-tab" data-bs-toggle="tab" data-bs-target="#raw" type="button" role="tab" aria-controls="raw" aria-selected="false">Raw HTML</button>
+        </li>
+        {% if crawled_url.screenshot %}
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="screenshot-tab" data-bs-toggle="tab" data-bs-target="#screenshot" type="button" role="tab" aria-controls="screenshot" aria-selected="false">Screenshot</button>
+        </li>
+        {% endif %}
+    </ul>
+    
+    <div class="tab-content mt-3" id="contentTabsContent">
+        <div class="tab-pane fade show active" id="extracted" role="tabpanel" aria-labelledby="extracted-tab">
+            {% if structured_content %}
+                <div class="content-section">
+                    <h3>Page Details</h3>
+                    <button class="btn btn-sm btn-primary copy-btn" onclick="copyContent('page-details')">Copy</button>
+                    <div id="page-details">
+                        <p><strong>Title:</strong> {{ structured_content.title }}</p>
+                        <p><strong>URL:</strong> {{ structured_content.url }}</p>
+                        <p><strong>Crawled at:</strong> {{ structured_content.timestamp }}</p>
+                    </div>
+                </div>
+
+                <div class="content-section">
+                    <h3>Page Text</h3>
+                    <button class="btn btn-sm btn-primary copy-btn" onclick="copyContent('page-text')">Copy</button>
+                    <pre id="page-text">{{ structured_content.text }}</pre>
+                </div>
+
+                {% if structured_content.meta_tags %}
+                <div class="content-section">
+                    <h3>Meta Tags</h3>
+                    <button class="btn btn-sm btn-primary copy-btn" onclick="copyContent('meta-tags')">Copy</button>
+                    <div id="meta-tags">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Name/Property</th>
+                                    <th>Content</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for tag in structured_content.meta_tags %}
+                                <tr>
+                                    <td>{{ tag.name }}</td>
+                                    <td>{{ tag.content }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                {% endif %}
+
+                {% if structured_content.links %}
+                <div class="content-section">
+                    <h3>Links</h3>
+                    <button class="btn btn-sm btn-primary copy-btn" onclick="copyContent('links')">Copy</button>
+                    <div id="links">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Text</th>
+                                    <th>URL</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for link in structured_content.links %}
+                                <tr>
+                                    <td>{{ link.text }}</td>
+                                    <td>{{ link.href }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                {% endif %}
+
+                {% if structured_content.images %}
+                <div class="content-section">
+                    <h3>Images</h3>
+                    <button class="btn btn-sm btn-primary copy-btn" onclick="copyContent('images')">Copy</button>
+                    <div id="images">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Alt Text</th>
+                                    <th>Source</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for img in structured_content.images %}
+                                <tr>
+                                    <td>{{ img.alt }}</td>
+                                    <td>{{ img.src }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                {% endif %}
+
+                {% if structured_content.tables %}
+                <div class="content-section">
+                    <h3>Tables</h3>
+                    <button class="btn btn-sm btn-primary copy-btn" onclick="copyContent('tables')">Copy</button>
+                    <div id="tables">
+                        {% for table in structured_content.tables %}
+                        <h4>Table {{ forloop.counter }}</h4>
+                        <table class="data-table">
+                            {% for row in table %}
+                            <tr>
+                                {% for cell in row %}
+                                <td>{{ cell }}</td>
+                                {% endfor %}
+                            </tr>
+                            {% endfor %}
+                        </table>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+            {% else %}
+                <div class="alert alert-warning">
+                    No structured content available for this URL. The content may have been crawled before this feature was added.
+                </div>
+            {% endif %}
+        </div>
+        
+        <div class="tab-pane fade" id="raw" role="tabpanel" aria-labelledby="raw-tab">
+            <div class="content-section">
+                <h3>Raw HTML</h3>
+                <button class="btn btn-sm btn-primary copy-btn" onclick="copyContent('raw-html')">Copy</button>
+                <pre id="raw-html">{{ crawled_url.content }}</pre>
+            </div>
+        </div>
+        
+        {% if crawled_url.screenshot %}
+        <div class="tab-pane fade" id="screenshot" role="tabpanel" aria-labelledby="screenshot-tab">
+            <div class="content-section">
+                <h3>Screenshot</h3>
+                <img src="data:image/png;base64,{{ crawled_url.screenshot }}" class="img-fluid" alt="Screenshot">
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function copyContent(elementId) {
+    const element = document.getElementById(elementId);
+    
+    // Create a range and select the text
+    const range = document.createRange();
+    range.selectNode(element);
+    window.getSelection().removeAllRanges();
+    window.getSelection().addRange(range);
+    
+    // Copy the text
+    try {
+        document.execCommand('copy');
+        
+        // Provide feedback
+        const button = document.querySelector(`#${elementId}`).previousElementSibling;
+        const originalText = button.innerHTML;
+        button.innerHTML = 'Copied!';
+        
+        // Reset after 2 seconds
+        setTimeout(() => {
+            button.innerHTML = originalText;
+        }, 2000);
+    } catch (err) {
+        console.error('Unable to copy content', err);
+    }
+    
+    // Clear selection
+    window.getSelection().removeAllRanges();
+}
+</script>
+{% endblock %} 

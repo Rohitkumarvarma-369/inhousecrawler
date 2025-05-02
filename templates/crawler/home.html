@@ -1,0 +1,91 @@
+{% extends 'base.html' %}
+
+{% block title %}InHouse Crawler - Home{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h5 class="card-title mb-0">Submit URLs for Crawling</h5>
+            </div>
+            <div class="card-body">
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label for="id_urls" class="form-label">URLs</label>
+                        {{ form.urls.errors }}
+                        <textarea id="id_urls" name="urls" rows="10" class="form-control" placeholder="Enter URLs, one per line">{{ form.urls.value|default_if_none:'' }}</textarea>
+                        <div class="form-text text-muted">{{ form.urls.help_text }}</div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="parallel_workers" class="form-label">Parallel Workers</label>
+                            <input type="number" class="form-control" id="parallel_workers" name="parallel_workers" value="1" min="1" max="20">
+                            <div class="form-text text-muted">Number of IP addresses to use in parallel (1-20)</div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <div class="form-check mt-4">
+                                <input type="checkbox" class="form-check-input" id="debug_mode" name="debug_mode">
+                                <label class="form-check-label" for="debug_mode">Debug Mode</label>
+                                <div class="form-text text-muted">Enable browser preview (slows down crawling)</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="id_proxy_countries" class="form-label">Proxy Countries</label>
+                        {{ form.proxy_countries.errors }}
+                        {{ form.proxy_countries }}
+                        <div class="form-text text-muted">{{ form.proxy_countries.help_text }}</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <div class="form-check">
+                            {{ form.reshuffle_proxies }}
+                            <label class="form-check-label" for="id_reshuffle_proxies">Reshuffle Proxies</label>
+                            <div class="form-text text-muted">{{ form.reshuffle_proxies.help_text }}</div>
+                        </div>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary">Submit</button>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-secondary text-white">
+                <h5 class="card-title mb-0">Recent Crawl Jobs</h5>
+            </div>
+            <div class="card-body">
+                {% if recent_jobs %}
+                    <div class="list-group">
+                        {% for job in recent_jobs %}
+                            <a href="{% url 'dashboard' job.id %}" class="list-group-item list-group-item-action">
+                                <div class="d-flex w-100 justify-content-between">
+                                    <h5 class="mb-1">Job #{{ job.id }}</h5>
+                                    <small>{{ job.created_at|date:"M d, Y H:i" }}</small>
+                                </div>
+                                <p class="mb-1">
+                                    Status: <span class="badge bg-{{ job.status|yesno:'success,warning,danger' }}">{{ job.get_status_display }}</span>
+                                    {% if job.debug_mode %}
+                                    <span class="badge bg-info">Debug Mode</span>
+                                    {% endif %}
+                                    {% if job.parallel_workers > 1 %}
+                                    <span class="badge bg-primary">{{ job.parallel_workers }} Workers</span>
+                                    {% endif %}
+                                </p>
+                                <small>{{ job.urls_processed }} / {{ job.urls_total }} URLs processed</small>
+                            </a>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p class="text-muted">No recent crawl jobs</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 
